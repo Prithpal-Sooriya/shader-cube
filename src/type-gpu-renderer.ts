@@ -60,7 +60,9 @@ export class TypeGpuRenderer implements CubeRenderer {
         this.setupInteraction(container);
 
         console.log('Renderer: Loading face texture...');
-        await this.loadFaceTexture('/MetaMask-icon-fox-developer-inverted.jpg')
+        // await this.loadFaceTexture('/MetaMask-icon-fox-developer-inverted.jpg')
+        await this.loadFaceTexture('/MetaMask-icon-fox.jpg')
+        // await this.loadFaceTexture('/mona.jpg')
 
         // Initial resize to setup the render target and viewport
         this.resize(container.clientWidth, container.clientHeight);
@@ -262,8 +264,7 @@ export class TypeGpuRenderer implements CubeRenderer {
             9.0, // uCharCount (based on CHAR_SET.length)
             6.0 * window.devicePixelRatio, // uFontSize
             this.canvas.width, this.canvas.height, // uResolution
-            1.0, 1.0, 1.0, 0.0, // uColor (white) + padding
-            0.0, 0.0, 0.0, 0.0, // uBgColor (black) + padding
+            1.0, 1, 1.0// uColor (white)
         ]);
         this.device.queue.writeBuffer(this.asciiUniformBuffer, 0, data);
     }
