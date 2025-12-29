@@ -1,16 +1,16 @@
 import { mat4 } from 'gl-matrix';
-import type { CubeRenderer } from './renderer';
+import type { Renderer } from './renderer';
 import { asciiVertexShader, asciiFragmentShader, createAsciiTexture } from './ascii-tg-shader';
 import { DodecahedronGeometry } from './geometries/dodecahedron';
 // import { CubeGeometry } from './geometries/cube';
 
-export class TypeGpuRenderer implements CubeRenderer {
+export class TypeGpuRenderer implements Renderer {
     private canvas: HTMLCanvasElement | null = null;
     private device: GPUDevice | null = null;
     private context: GPUCanvasContext | null = null;
 
     // Pipelines
-    private cubePipeline: any = null;
+    private meshPipeline: any = null;
     private asciiPipeline: any = null;
 
     // Resources
@@ -22,7 +22,7 @@ export class TypeGpuRenderer implements CubeRenderer {
     private faceTexture: GPUTexture | null = null;
 
     // Uniforms
-    private cubeUniformBuffer: GPUBuffer | null = null;
+    private meshUniformBuffer: GPUBuffer | null = null;
     private asciiUniformBuffer: GPUBuffer | null = null;
     private quadBuffer: GPUBuffer | null = null;
     private depthTexture: GPUTexture | null = null;
@@ -58,20 +58,19 @@ export class TypeGpuRenderer implements CubeRenderer {
             alphaMode: 'premultiplied',
         });
 
-        this.setupCubeResources();
+        this.setupGeometryResources();
         this.setupAsciiResources();
         this.setupInteraction(container);
 
         console.log('Renderer: Loading face texture...');
         await this.loadFaceTexture('/MetaMask-icon-fox-developer.jpg')
-        // await this.loadFaceTexture('/MetaMask-icon-fox.jpg')
         // await this.loadFaceTexture('/mona.jpg')
 
         // Initial resize to setup the render target and viewport
         this.resize(container.clientWidth, container.clientHeight);
     }
 
-    private async setupCubeResources(): Promise<void> {
+    private async setupGeometryResources(): Promise<void> {
         if (!this.device) return;
 
         const geometry = new DodecahedronGeometry();
@@ -88,14 +87,14 @@ export class TypeGpuRenderer implements CubeRenderer {
         new Float32Array(this.vertexBuffer.getMappedRange()).set(vertices);
         this.vertexBuffer.unmap();
 
-        this.cubeUniformBuffer = this.device.createBuffer({
+        this.meshUniformBuffer = this.device.createBuffer({
             size: 64, // 4x4 matrix
             usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
         });
 
-        // Simple cube pipeline (would normally use TypeGPU layouts)
+        // Simple mesh pipeline (would normally use TypeGPU layouts)
         // For brevity, using standard WebGPU calls where TypeGPU abstractions are not strictly needed
-        this.cubePipeline = this.device.createRenderPipeline({
+        this.meshPipeline = this.device.createRenderPipeline({
             layout: 'auto',
             vertex: {
                 module: this.device.createShaderModule({
@@ -285,7 +284,7 @@ export class TypeGpuRenderer implements CubeRenderer {
     }
 
     render(): void {
-        if (!this.device || !this.context || !this.canvas || !this.cubePipeline || !this.faceTexture || !this.sampler || !this.asciiPipeline || !this.renderTarget || !this.asciiTexture) return;
+        if (!this.device || !this.context || !this.canvas || !this.meshPipeline || !this.faceTexture || !this.sampler || !this.asciiPipeline || !this.renderTarget || !this.asciiTexture) return;
 
         // Smooth rotation
         this.currentRotation.x += (this.targetRotation.x - this.currentRotation.x) * 0.1;
@@ -304,12 +303,12 @@ export class TypeGpuRenderer implements CubeRenderer {
         mat4.rotateY(model, model, this.currentRotation.y);
 
         const mvp = mat4.multiply(mat4.create(), projection, mat4.multiply(mat4.create(), view, model));
-        this.device.queue.writeBuffer(this.cubeUniformBuffer!, 0, (mvp as unknown as Float32Array).buffer as ArrayBuffer);
+        this.device.queue.writeBuffer(this.meshUniformBuffer!, 0, (mvp as unknown as Float32Array).buffer as ArrayBuffer);
 
         const commandEncoder = this.device.createCommandEncoder();
 
-        // Pass 1: Render Cube to renderTarget
-        const cubePass = commandEncoder.beginRenderPass({
+        // Pass 1: Render Mesh to renderTarget
+        const meshPass = commandEncoder.beginRenderPass({
             colorAttachments: [{
                 view: this.renderTarget.createView(),
                 clearValue: { r: 0, g: 0, b: 0, a: 0 },
@@ -324,20 +323,20 @@ export class TypeGpuRenderer implements CubeRenderer {
             }
         });
 
-        const cubeBindGroup = this.device.createBindGroup({
-            layout: this.cubePipeline.getBindGroupLayout(0),
+        const meshBindGroup = this.device.createBindGroup({
+            layout: this.meshPipeline.getBindGroupLayout(0),
             entries: [
-                { binding: 0, resource: { buffer: this.cubeUniformBuffer! } },
+                { binding: 0, resource: { buffer: this.meshUniformBuffer! } },
                 { binding: 1, resource: this.faceTexture.createView() },
                 { binding: 2, resource: this.sampler },
             ]
         });
 
-        cubePass.setPipeline(this.cubePipeline);
-        cubePass.setBindGroup(0, cubeBindGroup);
-        cubePass.setVertexBuffer(0, this.vertexBuffer!);
-        cubePass.draw(this.vertexCount);
-        cubePass.end();
+        meshPass.setPipeline(this.meshPipeline);
+        meshPass.setBindGroup(0, meshBindGroup);
+        meshPass.setVertexBuffer(0, this.vertexBuffer!);
+        meshPass.draw(this.vertexCount);
+        meshPass.end();
 
         // Pass 2: ASCII Post-processing to Screen
         const asciiPass = commandEncoder.beginRenderPass({
@@ -374,7 +373,7 @@ export class TypeGpuRenderer implements CubeRenderer {
         this.faceTexture?.destroy();
         this.asciiTexture?.destroy();
         this.vertexBuffer?.destroy();
-        this.cubeUniformBuffer?.destroy();
+        this.meshUniformBuffer?.destroy();
         this.asciiUniformBuffer?.destroy();
         this.quadBuffer?.destroy();
     }
